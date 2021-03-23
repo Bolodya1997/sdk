@@ -212,11 +212,14 @@ func TestRefreshClient_CheckRaceConditions(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	clockTime := clock.FromContext(ctx)
+
 	client := next.NewNetworkServiceClient(
 		serialize.NewClient(),
 		updatepath.NewClient("foo"),
 		refresh.NewClient(ctx),
-		adapters.NewServerToClient(updatetoken.NewServer(sandbox.GenerateExpiringToken(conf.expireTimeout))),
+		adapters.NewServerToClient(updatetoken.NewServer(sandbox.GenerateExpiringToken(conf.expireTimeout)(clockTime))),
 		adapters.NewServerToClient(refreshTester),
 	)
 
@@ -234,7 +237,6 @@ func TestRefreshClient_Sandbox(t *testing.T) {
 	domain := sandbox.NewBuilder(ctx, t).
 		SetNodesCount(2).
 		SetRegistryProxySupplier(nil).
-		SetTokenGenerateFunc(sandbox.GenerateTestToken).
 		Build()
 
 	nsRegistryClient := domain.NewNSRegistryClient(ctx, sandbox.GenerateTestToken)
@@ -254,8 +256,7 @@ func TestRefreshClient_Sandbox(t *testing.T) {
 	refreshSrv := newRefreshTesterServer(t, sandboxMinDuration, sandboxExpireTimeout)
 	domain.Nodes[0].NewEndpoint(ctx, nseReg, sandbox.GenerateTestToken, refreshSrv)
 
-	nscTokenGenerator := sandbox.GenerateExpiringToken(sandboxExpireTimeout)
-	nsc := domain.Nodes[1].NewClient(ctx, nscTokenGenerator)
+	nsc := domain.Nodes[1].NewClient(ctx, sandbox.GenerateExpiringToken(sandboxExpireTimeout))
 
 	refreshSrv.beforeRequest("test-conn")
 	_, err = nsc.Request(ctx, mkRequest("test-conn", nil))

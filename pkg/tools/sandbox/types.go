@@ -30,20 +30,24 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/registry"
 	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/registry/common/dnsresolve"
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
 )
 
-// SupplyNSMgrProxyFunc nsmgr proxy
+// SupplyNSMgrProxyFunc NSMgr proxy
 type SupplyNSMgrProxyFunc func(ctx context.Context, regURL, proxyURL *url.URL, tokenGenerator token.GeneratorFunc, options ...nsmgrproxy.Option) nsmgr.Nsmgr
 
-// SupplyNSMgrFunc supplies NSMGR
+// SupplyNSMgrFunc supplies NSMgr
 type SupplyNSMgrFunc func(ctx context.Context, tokenGenerator token.GeneratorFunc, options ...nsmgr.Option) nsmgr.Nsmgr
 
 // SupplyRegistryFunc supplies Registry
 type SupplyRegistryFunc func(ctx context.Context, expiryDuration time.Duration, proxyRegistryURL *url.URL, options ...grpc.DialOption) registry.Registry
 
-// SupplyRegistryProxyFunc supplies registry proxy
+// SupplyRegistryProxyFunc supplies Registry proxy
 type SupplyRegistryProxyFunc func(ctx context.Context, dnsResolver dnsresolve.Resolver, options ...grpc.DialOption) registry.Registry
+
+// SupplyTokenGeneratorFunc supplies token generator
+type SupplyTokenGeneratorFunc func(clockTime clock.Clock) token.GeneratorFunc
 
 // SetupNodeFunc setups each node on Builder.Build() stage
 type SetupNodeFunc func(ctx context.Context, node *Node, nodeNum int)
@@ -86,7 +90,10 @@ type Domain struct {
 }
 
 // NewNSRegistryClient creates new NS registry client for the domain
-func (d *Domain) NewNSRegistryClient(ctx context.Context, generatorFunc token.GeneratorFunc) registryapi.NetworkServiceRegistryClient {
+func (d *Domain) NewNSRegistryClient(
+	ctx context.Context,
+	tokenGeneratorSupplier SupplyTokenGeneratorFunc,
+) registryapi.NetworkServiceRegistryClient {
 	var registryURL *url.URL
 	switch {
 	case d.Registry != nil:
@@ -97,6 +104,8 @@ func (d *Domain) NewNSRegistryClient(ctx context.Context, generatorFunc token.Ge
 		return nil
 	}
 
+	tokenGenerator := tokenGeneratorSupplier(clock.FromContext(ctx))
+
 	return registryclient.NewNetworkServiceRegistryClient(ctx, registryURL,
-		registryclient.WithDialOptions(DefaultDialOptions(generatorFunc)...))
+		registryclient.WithDialOptions(DefaultDialOptions(tokenGenerator)...))
 }

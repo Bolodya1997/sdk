@@ -36,6 +36,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/adapters"
 	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/tools/addressof"
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
 )
@@ -60,14 +61,15 @@ func (n *Node) NewNSMgr(
 	ctx context.Context,
 	name string,
 	serveURL *url.URL,
-	generatorFunc token.GeneratorFunc,
+	supplyTokenGenerator SupplyTokenGeneratorFunc,
 	supplyNSMgr SupplyNSMgrFunc,
 ) *NSMgrEntry {
 	if serveURL == nil {
 		serveURL = n.domain.supplyURL("nsmgr")
 	}
 
-	dialOptions := DefaultDialOptions(generatorFunc)
+	tokenGenerator := supplyTokenGenerator(clock.FromContext(ctx))
+	dialOptions := DefaultDialOptions(tokenGenerator)
 
 	options := []nsmgr.Option{
 		nsmgr.WithName(name),
@@ -86,7 +88,7 @@ func (n *Node) NewNSMgr(
 	}
 
 	entry := &NSMgrEntry{
-		Nsmgr: supplyNSMgr(ctx, generatorFunc, options...),
+		Nsmgr: supplyNSMgr(ctx, tokenGenerator, options...),
 		Name:  name,
 		URL:   serveURL,
 	}
@@ -104,14 +106,15 @@ func (n *Node) NewNSMgr(
 func (n *Node) NewForwarder(
 	ctx context.Context,
 	nse *registryapi.NetworkServiceEndpoint,
-	generatorFunc token.GeneratorFunc,
+	supplyTokenGenerator SupplyTokenGeneratorFunc,
 	additionalFunctionality ...networkservice.NetworkServiceServer,
 ) *EndpointEntry {
 	if nse.Url == "" {
 		nse.Url = n.domain.supplyURL("forwarder").String()
 	}
 
-	dialOptions := DefaultDialOptions(generatorFunc)
+	tokenGenerator := supplyTokenGenerator(clock.FromContext(ctx))
+	dialOptions := DefaultDialOptions(tokenGenerator)
 
 	entry := new(EndpointEntry)
 	additionalFunctionality = append(additionalFunctionality,
@@ -134,7 +137,7 @@ func (n *Node) NewForwarder(
 	*entry = *n.newEndpoint(
 		ctx,
 		nse,
-		generatorFunc,
+		tokenGenerator,
 		registryclient.NewNetworkServiceEndpointRegistryInterposeClient(ctx, n.URL(),
 			registryclient.WithDialOptions(dialOptions...)),
 		additionalFunctionality...,
@@ -147,19 +150,18 @@ func (n *Node) NewForwarder(
 func (n *Node) NewEndpoint(
 	ctx context.Context,
 	nse *registryapi.NetworkServiceEndpoint,
-	generatorFunc token.GeneratorFunc,
+	supplyTokenGenerator SupplyTokenGeneratorFunc,
 	additionalFunctionality ...networkservice.NetworkServiceServer,
 ) *EndpointEntry {
 	if nse.Url == "" {
 		nse.Url = n.domain.supplyURL("nse").String()
 	}
 
-	return n.newEndpoint(
-		ctx,
-		nse,
-		generatorFunc,
+	tokenGenerator := supplyTokenGenerator(clock.FromContext(ctx))
+
+	return n.newEndpoint(ctx, nse, tokenGenerator,
 		registryclient.NewNetworkServiceEndpointRegistryClient(ctx, n.URL(),
-			registryclient.WithDialOptions(DefaultDialOptions(generatorFunc)...)),
+			registryclient.WithDialOptions(DefaultDialOptions(tokenGenerator)...)),
 		additionalFunctionality...,
 	)
 }
@@ -167,12 +169,12 @@ func (n *Node) NewEndpoint(
 func (n *Node) newEndpoint(
 	ctx context.Context,
 	nse *registryapi.NetworkServiceEndpoint,
-	generatorFunc token.GeneratorFunc,
+	tokenGenerator token.GeneratorFunc,
 	registryClient registryapi.NetworkServiceEndpointRegistryClient,
 	additionalFunctionality ...networkservice.NetworkServiceServer,
 ) *EndpointEntry {
 	name := nse.Name
-	ep := endpoint.NewServer(ctx, generatorFunc,
+	ep := endpoint.NewServer(ctx, tokenGenerator,
 		endpoint.WithName(name),
 		endpoint.WithAdditionalFunctionality(additionalFunctionality...),
 	)
@@ -202,13 +204,15 @@ func (n *Node) newEndpoint(
 // NewClient starts a new client and connects it to the node NSMgr
 func (n *Node) NewClient(
 	ctx context.Context,
-	generatorFunc token.GeneratorFunc,
+	supplyTokenGenerator SupplyTokenGeneratorFunc,
 	additionalFunctionality ...networkservice.NetworkServiceClient,
 ) networkservice.NetworkServiceClient {
+	tokenGenerator := supplyTokenGenerator(clock.FromContext(ctx))
+
 	return client.NewClient(
 		ctx,
 		n.URL(),
-		client.WithDialOptions(DefaultDialOptions(generatorFunc)...),
+		client.WithDialOptions(DefaultDialOptions(tokenGenerator)...),
 		client.WithDialTimeout(DialTimeout),
 		client.WithAuthorizeClient(authorize.NewClient(authorize.Any())),
 		client.WithAdditionalFunctionality(additionalFunctionality...),

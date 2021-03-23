@@ -47,6 +47,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/utils/inject/injecterror"
 	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/sandbox"
 )
 
@@ -144,6 +145,8 @@ func (s *nsmgrSuite) Test_SelectsRestartingEndpointUsecase() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
+	clockTime := clock.FromContext(ctx)
+
 	nsReg, err := s.nsRegistryClient.Register(ctx, defaultRegistryService())
 	require.NoError(t, err)
 
@@ -162,7 +165,7 @@ func (s *nsmgrSuite) Test_SelectsRestartingEndpointUsecase() {
 	require.NoError(t, err)
 
 	nseRegistryClient := registryclient.NewNetworkServiceEndpointRegistryClient(ctx, s.domain.Nodes[0].URL(),
-		registryclient.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken)...))
+		registryclient.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken(clockTime))...))
 
 	nseReg, err = nseRegistryClient.Register(ctx, nseReg)
 	require.NoError(t, err)
@@ -170,7 +173,7 @@ func (s *nsmgrSuite) Test_SelectsRestartingEndpointUsecase() {
 	// 2. Postpone endpoint start
 	time.AfterFunc(time.Second, func() {
 		serv := grpc.NewServer()
-		endpoint.NewServer(ctx, sandbox.GenerateTestToken).Register(serv)
+		endpoint.NewServer(ctx, sandbox.GenerateTestToken(clockTime)).Register(serv)
 		_ = serv.Serve(netListener)
 	})
 
@@ -686,6 +689,7 @@ func multiLabelNS() *registry.NetworkService {
 }
 
 func additionalFunctionalityChain(ctx context.Context, clientURL *url.URL, clientName string, labels map[string]string) []networkservice.NetworkServiceServer {
+	clockTime := clock.FromContext(ctx)
 	return []networkservice.NetworkServiceServer{
 		chain.NewNetworkServiceServer(
 			clienturl.NewServer(clientURL),
@@ -699,7 +703,7 @@ func additionalFunctionalityChain(ctx context.Context, clientURL *url.URL, clien
 					),
 				),
 				connect.WithDialTimeout(sandbox.DialTimeout),
-				connect.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken)...),
+				connect.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken(clockTime))...),
 			),
 		),
 	}

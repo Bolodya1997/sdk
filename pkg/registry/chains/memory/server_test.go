@@ -23,6 +23,7 @@ import (
 	"github.com/networkservicemesh/api/pkg/api/networkservice/payload"
 	"github.com/networkservicemesh/api/pkg/api/registry"
 
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/sandbox"
 
@@ -41,6 +42,8 @@ func Test_RegistryMemory_ShouldSetDefaultPayload(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
+	clockTime := clock.FromContext(ctx)
+
 	domain := sandbox.NewBuilder(ctx, t).
 		SetNodesCount(0).
 		SetRegistryProxySupplier(nil).
@@ -48,7 +51,7 @@ func Test_RegistryMemory_ShouldSetDefaultPayload(t *testing.T) {
 		Build()
 
 	// start grpc client connection and register it
-	cc, err := grpc.DialContext(ctx, grpcutils.URLToTarget(domain.Registry.URL), sandbox.DefaultDialOptions(sandbox.GenerateTestToken)...)
+	cc, err := grpc.DialContext(ctx, grpcutils.URLToTarget(domain.Registry.URL), sandbox.DefaultDialOptions(sandbox.GenerateTestToken(clockTime))...)
 	require.NoError(t, err)
 	defer func() {
 		_ = cc.Close()

@@ -29,6 +29,7 @@ import (
 
 	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
 
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/opentracing"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
 )
@@ -75,15 +76,18 @@ func WithInsecureStreamRPCCredentials() grpc.DialOption {
 }
 
 // GenerateTestToken generates test token
-func GenerateTestToken(_ credentials.AuthInfo) (tokenValue string, expireTime time.Time, err error) {
-	return "TestToken", time.Now().Add(time.Hour).Local(), nil
+func GenerateTestToken(clockTime clock.Clock) token.GeneratorFunc {
+	return func(credentials.AuthInfo) (token string, expireTime time.Time, err error) {
+		return "TestToken", clockTime.Now().Add(time.Hour).Local(), nil
+	}
 }
 
 // GenerateExpiringToken returns a token generator with the specified expiration duration.
-func GenerateExpiringToken(duration time.Duration) token.GeneratorFunc {
-	value := fmt.Sprintf("TestToken-%s", duration)
-	return func(_ credentials.AuthInfo) (tokenValue string, expireTime time.Time, err error) {
-		return value, time.Now().Add(duration).Local(), nil
+func GenerateExpiringToken(duration time.Duration) SupplyTokenGeneratorFunc {
+	return func(clockTime clock.Clock) token.GeneratorFunc {
+		return func(_ credentials.AuthInfo) (tokenValue string, expireTime time.Time, err error) {
+			return fmt.Sprintf("TestToken-%s", duration), clockTime.Now().Add(duration).Local(), nil
+		}
 	}
 }
 

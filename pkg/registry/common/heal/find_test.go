@@ -28,6 +28,7 @@ import (
 
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/nsmgr"
 	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/sandbox"
 )
@@ -37,6 +38,8 @@ func TestHealClient_FindTest(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	clockTime := clock.FromContext(ctx)
 
 	nsmgrCtx, nsmgrCancel := context.WithCancel(ctx)
 	defer nsmgrCancel()
@@ -56,7 +59,7 @@ func TestHealClient_FindTest(t *testing.T) {
 	findCtx, findCancel := context.WithCancel(ctx)
 
 	nsRegistryClient := registryclient.NewNetworkServiceRegistryClient(ctx, domain.Nodes[0].URL(),
-		registryclient.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken)...))
+		registryclient.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken(clockTime))...))
 
 	nsStream, err := nsRegistryClient.Find(findCtx, &registry.NetworkServiceQuery{
 		NetworkService: new(registry.NetworkService),
@@ -65,7 +68,7 @@ func TestHealClient_FindTest(t *testing.T) {
 	require.NoError(t, err)
 
 	nseRegistryClient := registryclient.NewNetworkServiceEndpointRegistryClient(ctx, domain.Nodes[0].URL(),
-		registryclient.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken)...))
+		registryclient.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken(clockTime))...))
 
 	nseStream, err := nseRegistryClient.Find(findCtx, &registry.NetworkServiceEndpointQuery{
 		NetworkServiceEndpoint: new(registry.NetworkServiceEndpoint),

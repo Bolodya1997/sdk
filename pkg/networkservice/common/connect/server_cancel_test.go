@@ -42,6 +42,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/next"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/utils/checks/checkrequest"
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/sandbox"
 )
 
@@ -50,6 +51,8 @@ func TestConnect_CancelDuringRequest(t *testing.T) {
 	var err error
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
+	clockTime := clock.FromContext(ctx)
 
 	domain := sandbox.NewBuilder(ctx, t).
 		SetNodesCount(1).
@@ -106,7 +109,7 @@ func TestConnect_CancelDuringRequest(t *testing.T) {
 			connect.NewServer(ctx,
 				clientFactory,
 				connect.WithDialTimeout(sandbox.DialTimeout),
-				connect.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken)...),
+				connect.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken(clockTime))...),
 			),
 		),
 	)

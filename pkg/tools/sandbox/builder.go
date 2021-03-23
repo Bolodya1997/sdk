@@ -36,6 +36,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/registry/chains/proxydns"
 	registryconnect "github.com/networkservicemesh/sdk/pkg/registry/common/connect"
 	"github.com/networkservicemesh/sdk/pkg/registry/common/dnsresolve"
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
@@ -54,9 +55,10 @@ type Builder struct {
 	supplyRegistryProxy SupplyRegistryProxyFunc
 	setupNode           SetupNodeFunc
 
+	supplyTokenGenerator SupplyTokenGeneratorFunc
+
 	name                   string
 	dnsResolver            dnsresolve.Resolver
-	generateTokenFunc      token.GeneratorFunc
 	registryExpiryDuration time.Duration
 
 	useUnixSockets bool
@@ -74,9 +76,9 @@ func NewBuilder(ctx context.Context, t *testing.T) *Builder {
 		supplyNSMgrProxy:       nsmgrproxy.NewServer,
 		supplyRegistry:         memory.NewServer,
 		supplyRegistryProxy:    proxydns.NewServer,
+		supplyTokenGenerator:   GenerateTestToken,
 		name:                   "cluster.local",
 		dnsResolver:            new(FakeDNSResolver),
-		generateTokenFunc:      GenerateTestToken,
 		registryExpiryDuration: time.Minute,
 	}
 
@@ -125,6 +127,14 @@ func (b *Builder) SetNodeSetup(f SetupNodeFunc) *Builder {
 	return b
 }
 
+// SetTokenGeneratorSupplier replaces default token generator supplier to custom function
+func (b *Builder) SetTokenGeneratorSupplier(f SupplyTokenGeneratorFunc) *Builder {
+	require.NotNil(b.t, f)
+
+	b.supplyTokenGenerator = f
+	return b
+}
+
 // SetDNSDomainName sets DNS domain name for the building NSM domain
 func (b *Builder) SetDNSDomainName(name string) *Builder {
 	b.name = name
@@ -134,12 +144,6 @@ func (b *Builder) SetDNSDomainName(name string) *Builder {
 // SetDNSResolver sets DNS resolver for proxy registries
 func (b *Builder) SetDNSResolver(d dnsresolve.Resolver) *Builder {
 	b.dnsResolver = d
-	return b
-}
-
-// SetTokenGenerateFunc sets function for the token generation
-func (b *Builder) SetTokenGenerateFunc(f token.GeneratorFunc) *Builder {
-	b.generateTokenFunc = f
 	return b
 }
 
@@ -195,9 +199,11 @@ func (b *Builder) Build() *Domain {
 		}
 	}
 
-	b.domain.RegistryProxy = b.newRegistryProxy()
-	b.domain.Registry = b.newRegistry()
-	b.domain.NSMgrProxy = b.newNSMgrProxy()
+	tokenGenerator := b.supplyTokenGenerator(clock.FromContext(b.ctx))
+
+	b.domain.RegistryProxy = b.newRegistryProxy(tokenGenerator)
+	b.domain.Registry = b.newRegistry(tokenGenerator)
+	b.domain.NSMgrProxy = b.newNSMgrProxy(tokenGenerator)
 	for i := 0; i < b.nodesCount; i++ {
 		b.domain.Nodes = append(b.domain.Nodes, b.newNode(i))
 	}
@@ -227,12 +233,16 @@ func (b *Builder) supplyTCPAddress() func(prefix string) *url.URL {
 	}
 }
 
-func (b *Builder) newRegistryProxy() *RegistryEntry {
+func (b *Builder) newRegistryProxy(tokenGenerator token.GeneratorFunc) *RegistryEntry {
 	if b.supplyRegistryProxy == nil {
 		return nil
 	}
 
-	registryProxy := b.supplyRegistryProxy(b.ctx, b.dnsResolver, DefaultDialOptions(b.generateTokenFunc)...)
+	registryProxy := b.supplyRegistryProxy(
+		b.ctx,
+		b.dnsResolver,
+		DefaultDialOptions(tokenGenerator)...,
+	)
 	serveURL := b.domain.supplyURL("reg-proxy")
 
 	serve(b.ctx, b.t, serveURL, registryProxy.Register)
@@ -245,7 +255,7 @@ func (b *Builder) newRegistryProxy() *RegistryEntry {
 	}
 }
 
-func (b *Builder) newRegistry() *RegistryEntry {
+func (b *Builder) newRegistry(tokenGenerator token.GeneratorFunc) *RegistryEntry {
 	if b.supplyRegistry == nil {
 		return nil
 	}
@@ -255,7 +265,12 @@ func (b *Builder) newRegistry() *RegistryEntry {
 		nsmgrProxyURL = b.domain.NSMgrProxy.URL
 	}
 
-	registry := b.supplyRegistry(b.ctx, b.registryExpiryDuration, nsmgrProxyURL, DefaultDialOptions(b.generateTokenFunc)...)
+	registry := b.supplyRegistry(
+		b.ctx,
+		b.registryExpiryDuration,
+		nsmgrProxyURL,
+		DefaultDialOptions(tokenGenerator)...,
+	)
 	serveURL := b.domain.supplyURL("reg")
 
 	serve(b.ctx, b.t, serveURL, registry.Register)
@@ -268,7 +283,7 @@ func (b *Builder) newRegistry() *RegistryEntry {
 	}
 }
 
-func (b *Builder) newNSMgrProxy() *NSMgrEntry {
+func (b *Builder) newNSMgrProxy(tokenGenerator token.GeneratorFunc) *NSMgrEntry {
 	if b.supplyRegistryProxy == nil {
 		return nil
 	}
@@ -277,14 +292,14 @@ func (b *Builder) newNSMgrProxy() *NSMgrEntry {
 	mgr := b.supplyNSMgrProxy(b.ctx,
 		b.domain.Registry.URL,
 		b.domain.RegistryProxy.URL,
-		b.generateTokenFunc,
+		tokenGenerator,
 		nsmgrproxy.WithListenOn(b.domain.NSMgrProxy.URL),
 		nsmgrproxy.WithName(name),
 		nsmgrproxy.WithConnectOptions(
 			connect.WithDialTimeout(DialTimeout),
-			connect.WithDialOptions(DefaultDialOptions(b.generateTokenFunc)...)),
+			connect.WithDialOptions(DefaultDialOptions(tokenGenerator)...)),
 		nsmgrproxy.WithRegistryConnectOptions(
-			registryconnect.WithDialOptions(DefaultDialOptions(b.generateTokenFunc)...),
+			registryconnect.WithDialOptions(DefaultDialOptions(tokenGenerator)...),
 		),
 	)
 

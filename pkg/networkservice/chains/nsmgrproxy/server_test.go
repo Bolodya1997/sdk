@@ -38,6 +38,7 @@ import (
 	kernelmech "github.com/networkservicemesh/sdk/pkg/networkservice/common/mechanisms/kernel"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/next"
+	"github.com/networkservicemesh/sdk/pkg/tools/clock"
 	"github.com/networkservicemesh/sdk/pkg/tools/sandbox"
 )
 
@@ -472,6 +473,8 @@ func Test_Interdomain_PassThroughUsecase(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
+	clockTime := clock.FromContext(ctx)
+
 	const clusterCount = 5
 
 	var dnsServer = new(sandbox.FakeDNSResolver)
@@ -495,7 +498,7 @@ func Test_Interdomain_PassThroughUsecase(t *testing.T) {
 							kernelmech.NewClient(),
 						)),
 						connect.WithDialTimeout(sandbox.DialTimeout),
-						connect.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken)...),
+						connect.WithDialOptions(sandbox.DefaultDialOptions(sandbox.GenerateTestToken(clockTime))...),
 					),
 				),
 			}
